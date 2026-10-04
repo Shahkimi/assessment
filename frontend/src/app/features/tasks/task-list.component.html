@@ -1,0 +1,29 @@
+<header class="topbar">
+  <div class="topbar-inner">
+    <h1>TaskFlow</h1>
+    <button class="btn btn-sm" type="button" (click)="signOut()">Sign out</button>
+  </div>
+</header>
+
+<main class="page">
+  <h2>My tasks</h2>
+
+  @if (loading()) {
+    <div class="state" role="status" aria-live="polite">
+      <span class="spinner" aria-hidden="true"></span> Loading tasks…
+    </div>
+  } @else if (loadError()) {
+    <div class="alert alert-error" role="alert">
+      {{ loadError() }}
+      <button class="btn btn-sm" type="button" (click)="load()">Retry</button>
+    </div>
+  } @else if (tasks().length === 0) {
+    <div class="card state">No tasks yet.</div>
+  } @else {
+    <ul class="plain-list">
+      @for (task of tasks(); track task.id) {
+        <li>{{ task.title }} · {{ task.priority }} · {{ task.status }}</li>
+      }
+    </ul>
+  }
+</main>
