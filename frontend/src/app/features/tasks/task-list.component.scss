@@ -172,3 +172,41 @@ tr.busy {
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+
+/* ---- narrow screens: stack each row as a block so actions are never clipped ---- */
+@media (max-width: 40rem) {
+  thead {
+    display: none;
+  }
+
+  table,
+  tbody,
+  tr,
+  td {
+    display: block;
+  }
+
+  tbody tr {
+    padding: 0.75rem 0.9rem;
+    border-bottom: 1px solid var(--border);
+
+    &:last-child {
+      border-bottom: 0;
+    }
+  }
+
+  td {
+    padding: 0.15rem 0;
+    border: 0;
+  }
+
+  .row-actions {
+    margin-top: 0.5rem;
+    text-align: left;
+    white-space: normal;
+
+    .btn {
+      margin: 0 0.3rem 0.3rem 0;
+    }
+  }
+}
