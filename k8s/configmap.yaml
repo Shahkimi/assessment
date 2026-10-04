@@ -1,0 +1,17 @@
+# Non-sensitive settings. Secrets (DB password, JWT key, demo password) live in secret.yaml.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: taskflow-config
+  namespace: taskflow
+  labels:
+    app.kubernetes.io/part-of: taskflow
+data:
+  POSTGRES_DB: taskflow
+  POSTGRES_USER: taskflow
+  JWT_ISSUER: taskflow-api
+  JWT_AUDIENCE: taskflow-web
+  JWT_EXPIRY_MINUTES: "60"
+  DEMO_USER_EMAIL: admin@taskflow.com
+  # Where the frontend's nginx forwards /api, /swagger and /health (the backend Service).
+  BACKEND_URL: http://backend:8080

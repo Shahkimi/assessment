@@ -1,0 +1,133 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: taskflow
+  labels:
+    app.kubernetes.io/name: backend
+    app.kubernetes.io/part-of: taskflow
+spec:
+  # Single replica on purpose: the API applies EF Core migrations at start-up and EF 8 has no
+  # migration lock, so two pods racing could collide. For more replicas, run migrations in a
+  # Job / init container and set Database__ApplyMigrationsOnStartup to "false".
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: backend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: backend
+        app.kubernetes.io/part-of: taskflow
+    spec:
+      containers:
+        - name: backend
+          image: taskflow-backend:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            # These three are defined first because the connection string below refers to them
+            # with $(NAME); Kubernetes only expands variables declared earlier in the list.
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: taskflow-config
+                  key: POSTGRES_DB
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: taskflow-config
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: taskflow-secrets
+                  key: POSTGRES_PASSWORD
+            - name: ConnectionStrings__Default
+              value: Host=postgres;Port=5432;Database=$(POSTGRES_DB);Username=$(POSTGRES_USER);Password=$(POSTGRES_PASSWORD)
+            - name: Jwt__Key
+              valueFrom:
+                secretKeyRef:
+                  name: taskflow-secrets
+                  key: JWT_KEY
+            - name: Jwt__Issuer
+              valueFrom:
+                configMapKeyRef:
+                  name: taskflow-config
+                  key: JWT_ISSUER
+            - name: Jwt__Audience
+              valueFrom:
+                configMapKeyRef:
+                  name: taskflow-config
+                  key: JWT_AUDIENCE
+            - name: Jwt__ExpiryMinutes
+              valueFrom:
+                configMapKeyRef:
+                  name: taskflow-config
+                  key: JWT_EXPIRY_MINUTES
+            - name: DemoUser__Email
+              valueFrom:
+                configMapKeyRef:
+                  name: taskflow-config
+                  key: DEMO_USER_EMAIL
+            - name: DemoUser__Password
+              valueFrom:
+                secretKeyRef:
+                  name: taskflow-secrets
+                  key: DEMO_USER_PASSWORD
+            - name: Database__ApplyMigrationsOnStartup
+              value: "true"
+          # Gives the app time to wait for Postgres + run migrations before liveness can kill it.
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 3
+            failureThreshold: 30
+          # Liveness: process answers (does not touch the DB, so a DB blip never restarts the API).
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          # Readiness: DB reachable. Not ready = removed from the Service, not restarted.
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 384Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1654
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: taskflow
+  labels:
+    app.kubernetes.io/name: backend
+    app.kubernetes.io/part-of: taskflow
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: backend
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
