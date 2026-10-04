@@ -1,0 +1,61 @@
+# TaskFlow: Angular (nginx) + ASP.NET Core API + PostgreSQL.
+#   cp .env.example .env   # then edit the secrets
+#   docker compose up --build
+#
+# No secrets live in this file: every sensitive value comes from .env (git-ignored).
+# `${VAR:?message}` makes Compose stop with that message when the variable is missing.
+
+name: taskflow
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Copy .env.example to .env first}
+      POSTGRES_USER: ${POSTGRES_USER:?Copy .env.example to .env first}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Copy .env.example to .env first}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    healthcheck:
+      # $$ stops Compose interpolating; the shell inside the container expands it.
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    environment:
+      ConnectionStrings__Default: Host=db;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      Jwt__Key: ${JWT_KEY:?Copy .env.example to .env first}
+      Jwt__Issuer: ${JWT_ISSUER:-taskflow-api}
+      Jwt__Audience: ${JWT_AUDIENCE:-taskflow-web}
+      Jwt__ExpiryMinutes: ${JWT_EXPIRY_MINUTES:-60}
+      DemoUser__Email: ${DEMO_USER_EMAIL:?Copy .env.example to .env first}
+      DemoUser__Password: ${DEMO_USER_PASSWORD:?Copy .env.example to .env first}
+      Database__ApplyMigrationsOnStartup: "true"
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${BACKEND_PORT:-5080}:8080"
+
+  frontend:
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    environment:
+      BACKEND_URL: http://backend:8080
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-4200}:80"
+
+volumes:
+  pgdata:
