@@ -1,0 +1,25 @@
+# env / secrets
+.env
+*.env.local
+
+# .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+TestResults/
+publish/
+
+# Node / Angular
+node_modules/
+dist/
+.angular/
+npm-debug.log*
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+Thumbs.db
+.DS_Store
