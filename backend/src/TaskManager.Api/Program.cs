@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using TaskManager.Api.Data;
 using TaskManager.Api.Extensions;
 using TaskManager.Api.Middleware;
 
@@ -9,6 +11,10 @@ builder.Services
     .AddApiControllers()
     .AddJwtAuthentication(builder.Configuration)
     .AddSwaggerWithJwt();
+
+builder.Services
+    .AddHealthChecks()
+    .AddDbContextCheck<AppDbContext>("database", tags: ["ready"]);
 
 var app = builder.Build();
 
@@ -23,6 +29,12 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
+// Liveness: process is up (no dependencies). Readiness: can reach the database.
+app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
+app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = c => c.Tags.Contains("ready") });
+
+await app.ApplyMigrationsIfEnabledAsync();
 
 app.Run();
 
