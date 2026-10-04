@@ -6,7 +6,34 @@
 </header>
 
 <main class="page">
-  <h2>My tasks</h2>
+  <div class="page-head">
+    <div>
+      <h2>My tasks</h2>
+      @if (!loading() && !loadError()) {
+        <p class="muted">{{ openCount() }} open · {{ tasks().length - openCount() }} done</p>
+      }
+    </div>
+    <button class="btn btn-primary" type="button" (click)="openCreate()" [disabled]="formState() === 'new'">
+      + New task
+    </button>
+  </div>
+
+  @if (formState() !== null) {
+    <!-- track by identity so switching from one task to another rebuilds the form -->
+    @for (state of [formState()]; track state) {
+      <app-task-form
+        [task]="editingTask()"
+        [saving]="saving()"
+        [serverErrors]="formErrors()"
+        (submitted)="save($event)"
+        (cancelled)="closeForm()"
+      />
+    }
+  }
+
+  @if (actionError(); as message) {
+    <div class="alert alert-error" role="alert">{{ message }}</div>
+  }
 
   @if (loading()) {
     <div class="state" role="status" aria-live="polite">
@@ -18,12 +45,57 @@
       <button class="btn btn-sm" type="button" (click)="load()">Retry</button>
     </div>
   } @else if (tasks().length === 0) {
-    <div class="card state">No tasks yet.</div>
+    <div class="card state">No tasks yet. Create your first one with “New task”.</div>
   } @else {
-    <ul class="plain-list">
-      @for (task of tasks(); track task.id) {
-        <li>{{ task.title }} · {{ task.priority }} · {{ task.status }}</li>
-      }
-    </ul>
+    <div class="table-wrap card">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Task</th>
+            <th scope="col">Priority</th>
+            <th scope="col">Due</th>
+            <th scope="col">Status</th>
+            <th scope="col"><span class="visually-hidden">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (task of tasks(); track task.id) {
+            <tr [class.done]="task.status === 'Done'" [class.busy]="isBusy(task.id)">
+              <td>
+                <div class="title">{{ task.title }}</div>
+                @if (task.description) {
+                  <div class="description muted">{{ task.description }}</div>
+                }
+              </td>
+              <td>
+                <span class="badge" [class]="'badge priority-' + task.priority.toLowerCase()">{{ task.priority }}</span>
+              </td>
+              <td>
+                @if (task.dueDate) {
+                  <span [class.overdue]="isOverdue(task)">
+                    {{ toLocalDate(task.dueDate) | date: 'mediumDate' }}
+                    @if (isOverdue(task)) { <small>(overdue)</small> }
+                  </span>
+                } @else {
+                  <span class="muted">—</span>
+                }
+              </td>
+              <td>
+                <span class="badge" [class]="'badge status-' + task.status.toLowerCase()">{{ task.status }}</span>
+              </td>
+              <td class="row-actions">
+                <button class="btn btn-sm" type="button" (click)="toggleStatus(task)" [disabled]="isBusy(task.id)">
+                  {{ task.status === 'Done' ? 'Undo' : 'Mark done' }}
+                </button>
+                <button class="btn btn-sm" type="button" (click)="openEdit(task)" [disabled]="isBusy(task.id)">Edit</button>
+                <button class="btn btn-sm btn-danger" type="button" (click)="remove(task)" [disabled]="isBusy(task.id)">
+                  Delete
+                </button>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
   }
 </main>
