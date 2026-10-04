@@ -1,0 +1,51 @@
+# Rendered by the official nginx image at start-up: ${VARS} are replaced from the container
+# environment (envsubst), everything else is plain nginx config.
+# Same image works in docker-compose (BACKEND_URL=http://backend:8080) and Kubernetes.
+
+server {
+    listen 80;
+    server_name _;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    gzip on;
+    gzip_types text/plain text/css application/javascript application/json image/svg+xml;
+    gzip_min_length 1024;
+
+    # Resolve the backend at request time (not at start-up) so nginx still boots if the
+    # backend is a few seconds late; the resolver comes from the container's /etc/resolv.conf.
+    resolver ${NGINX_LOCAL_RESOLVERS} valid=10s ipv6=off;
+
+    location /api/ {
+        set $backend ${BACKEND_URL};
+        proxy_pass $backend;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 30s;
+    }
+
+    # Swagger UI + health are served by the backend too.
+    location ~ ^/(swagger|health)(/|$) {
+        set $backend ${BACKEND_URL};
+        proxy_pass $backend;
+        proxy_set_header Host $host;
+    }
+
+    # Hashed build assets never change: cache for a year.
+    location ~* \.(?:js|css|woff2?|ico|png|svg)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        try_files $uri =404;
+    }
+
+    # SPA fallback: deep links such as /tasks must return index.html, never 404.
+    # index.html itself must not be cached so a new deploy is picked up immediately.
+    location / {
+        add_header Cache-Control "no-cache";
+        try_files $uri $uri/ /index.html;
+    }
+}
