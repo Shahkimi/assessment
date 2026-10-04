@@ -1,8 +1,17 @@
+using TaskManager.Api.Extensions;
+using TaskManager.Api.Middleware;
+
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services
+    .AddPersistence(builder.Configuration)
+    .AddApplicationServices()
+    .AddApiControllers();
 
 var app = builder.Build();
 
-app.MapGet("/", () => "TaskFlow API");
+app.UseMiddleware<ExceptionHandlingMiddleware>();
+app.MapControllers();
 
 app.Run();
 
