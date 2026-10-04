@@ -73,7 +73,7 @@ public class TaskService(
     }
 
     private async Task<TaskItem> GetOrThrowAsync(int id, CancellationToken ct) =>
-        await repository.GetByIdAsync(id, ct) ?? throw new NotFoundException(nameof(TaskItem), id);
+        await repository.GetByIdAsync(id, ct) ?? throw new NotFoundException("Task", id);
 
     private static string? NormalizeDescription(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();

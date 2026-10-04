@@ -39,17 +39,28 @@ public static class ServiceCollectionExtensions
                 o.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter()));
 
         // Malformed JSON, unknown enum text or bad date formats fail before our code runs.
-        // Reshape those 400s so they look like every other error.
+        // Reshape those 400s so they look like every other error (and hide internal type names).
         services.Configure<ApiBehaviorOptions>(o =>
             o.InvalidModelStateResponseFactory = ctx =>
             {
-                var errors = ctx.ModelState
-                    .Where(e => e.Value is { Errors.Count: > 0 })
-                    .ToDictionary(
-                        e => FieldName(e.Key),
-                        e => e.Value!.Errors
-                            .Select(x => string.IsNullOrWhiteSpace(x.ErrorMessage) ? "The value is invalid." : x.ErrorMessage)
-                            .ToArray());
+                var parameterNames = ctx.ActionDescriptor.Parameters
+                    .Select(p => p.Name)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+                var errors = new Dictionary<string, string[]>();
+                foreach (var (key, entry) in ctx.ModelState)
+                {
+                    if (entry.Errors.Count == 0) continue;
+
+                    // "request: The request field is required." is a binder artefact, not a field error.
+                    if (parameterNames.Contains(key)) continue;
+
+                    var field = FieldName(key);
+                    errors[field] = entry.Errors.Select(e => FriendlyMessage(field, e.ErrorMessage)).Distinct().ToArray();
+                }
+
+                if (errors.Count == 0)
+                    errors["body"] = ["A JSON request body is required."];
 
                 var problem = new ValidationProblemDetails(errors)
                 {
@@ -76,5 +87,14 @@ public static class ServiceCollectionExtensions
     {
         var name = key.TrimStart('$', '.');
         return name.Length == 0 ? "body" : name;
+    }
+
+    private static string FriendlyMessage(string field, string message)
+    {
+        if (string.IsNullOrWhiteSpace(message)) return "The value is invalid.";
+        if (field == "body") return "Request body is not valid JSON.";
+        if (message.Contains("could not be converted", StringComparison.OrdinalIgnoreCase))
+            return $"'{field}' has an invalid value.";
+        return message;
     }
 }
