@@ -217,6 +217,7 @@ using a real cluster (the file header shows the `kubectl create secret` command)
 | `GET /health/ready` returns 503 | The API cannot reach PostgreSQL. `docker compose logs db backend`. |
 | Browser shows a blank page after a frontend change | Rebuild: `docker compose up --build frontend`. |
 | `npm start` shows `ECONNREFUSED` for `/api` | The backend is not running on the port in `frontend/proxy.conf.json` (5080). |
+| `502 Bad Gateway` from the frontend in Kubernetes, nginx log `backend could not be resolved` | `BACKEND_URL` must be the fully qualified name (`backend.taskflow.svc.cluster.local`); adjust if your cluster domain is not `cluster.local`. |
 | Pods `ImagePullBackOff` | The cluster cannot see the local images. Load them (see section 5) or push to a registry. |
 
 Useful commands: `docker compose logs -f backend`, `docker compose ps`,
