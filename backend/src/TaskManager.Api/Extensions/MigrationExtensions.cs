@@ -19,11 +19,32 @@ public static class MigrationExtensions
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Migrations");
 
+        await WaitForDatabaseAsync(db, logger);
+
         var pending = (await db.Database.GetPendingMigrationsAsync()).ToList();
         logger.LogInformation("Applying {Count} pending migration(s): {Names}", pending.Count, string.Join(", ", pending));
 
-        // Npgsql retry-on-failure covers a database that is still starting up.
         await db.Database.MigrateAsync();
         logger.LogInformation("Database is up to date.");
+    }
+
+    /// <summary>
+    /// Npgsql's retry strategy does not treat "connection refused" as transient, so a database that
+    /// is still starting (Kubernetes has no depends_on) would crash the API on its first attempt.
+    /// Poll for up to ~60 s instead; Kubernetes' startupProbe tolerates this wait.
+    /// </summary>
+    private static async Task WaitForDatabaseAsync(AppDbContext db, ILogger logger)
+    {
+        const int maxAttempts = 30;
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            if (await db.Database.CanConnectAsync())
+                return;
+
+            logger.LogWarning("Database not reachable yet (attempt {Attempt}/{Max}); retrying in 2 s.", attempt, maxAttempts);
+            await Task.Delay(TimeSpan.FromSeconds(2));
+        }
+
+        throw new InvalidOperationException("Database was not reachable after 60 seconds.");
     }
 }
