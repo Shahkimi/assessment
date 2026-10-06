@@ -24,5 +24,8 @@ npm-debug.log*
 Thumbs.db
 .DS_Store
 
+# throwaway kustomizations written by scripts/bluegreen.sh
+k8s/.render.*/
+
 # personal study material (not part of the submission)
 syllabus/
