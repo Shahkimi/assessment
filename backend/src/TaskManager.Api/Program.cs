@@ -18,6 +18,14 @@ builder.Services
 
 var app = builder.Build();
 
+// `--migrate-only`: run by the Kubernetes migration Job. Applies migrations, then exits before the
+// web server starts, so replicas and blue/green colours never race to migrate at start-up.
+if (args.Contains("--migrate-only"))
+{
+    Environment.ExitCode = await app.RunMigrationsOnlyAsync();
+    return;
+}
+
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 
 // Swagger stays on in every environment for this assessment so reviewers can try the API

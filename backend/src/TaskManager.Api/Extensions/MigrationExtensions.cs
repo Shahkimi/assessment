@@ -15,6 +15,30 @@ public static class MigrationExtensions
         if (!app.Configuration.GetValue<bool>("Database:ApplyMigrationsOnStartup"))
             return;
 
+        await ApplyMigrationsAsync(app);
+    }
+
+    /// <summary>
+    /// One-shot mode for the Kubernetes migration Job (`--migrate-only`): applies pending migrations
+    /// regardless of Database:ApplyMigrationsOnStartup, then the process exits without serving traffic.
+    /// Returns the process exit code (0 = database is up to date, 1 = migration failed).
+    /// </summary>
+    public static async Task<int> RunMigrationsOnlyAsync(this WebApplication app)
+    {
+        try
+        {
+            await ApplyMigrationsAsync(app);
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            app.Logger.LogCritical(ex, "Migration failed.");
+            return 1;
+        }
+    }
+
+    private static async Task ApplyMigrationsAsync(WebApplication app)
+    {
         using var scope = app.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Migrations");
