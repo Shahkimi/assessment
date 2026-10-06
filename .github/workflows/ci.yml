@@ -1,7 +1,7 @@
 name: CI
 
-# Checks for the main branch only: pull requests that target main, and pushes to main
-# (cd.yml calls this file, so main is checked once per push and then published).
+# Runs on pull requests that target main and is reused by cd.yml for pushes to main,
+# so main only gets published after the same checks pass.
 on:
   pull_request:
     branches: [main]
@@ -78,11 +78,44 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Render kustomization
-        run: kubectl kustomize k8s > rendered.yaml
+      - name: Validate every kustomization against the Kubernetes schemas
+        run: |
+          set -euo pipefail
+          for dir in k8s k8s/slots/blue k8s/slots/green k8s/jobs; do
+            echo "== $dir"
+            kubectl kustomize "$dir" | docker run --rm -i ghcr.io/yannh/kubeconform:v0.6.7 -strict -summary -
+          done
 
-      - name: Validate against the Kubernetes schemas
-        run: docker run --rm -i ghcr.io/yannh/kubeconform:v0.6.7 -strict -summary - < rendered.yaml
+      - name: Check the blue/green wiring of each colour
+        run: |
+          set -euo pipefail
+          for slot in blue green; do
+            kubectl kustomize "k8s/slots/$slot" > "$slot.yaml"
+
+            # Every HPA scales a Deployment that exists in the same colour.
+            deploys="$(yq 'select(.kind == "Deployment") | .metadata.name' "$slot.yaml")"
+            for target in $(yq 'select(.kind == "HorizontalPodAutoscaler") | .spec.scaleTargetRef.name' "$slot.yaml"); do
+              grep -qx "$target" <<< "$deploys" || { echo "HPA targets unknown Deployment $target in $slot"; exit 1; }
+            done
+
+            # Deployments, pod templates, Services and PDBs all carry this colour.
+            for path in \
+              'select(.kind == "Deployment") | .spec.selector.matchLabels.slot' \
+              'select(.kind == "Deployment") | .spec.template.metadata.labels.slot' \
+              'select(.kind == "Service") | .spec.selector.slot' \
+              'select(.kind == "PodDisruptionBudget") | .spec.selector.matchLabels.slot'; do
+              found="$(yq "$path" "$slot.yaml" | sort -u)"
+              [ "$found" = "$slot" ] || { echo "$slot: '$path' gave '$found'"; exit 1; }
+            done
+
+            # Shared config must stay shared between colours (sessions and settings are identical).
+            if grep -Eq 'name: taskflow-(config|secrets)-(blue|green)' "$slot.yaml"; then
+              echo "$slot: ConfigMap/Secret reference was renamed by nameSuffix"; exit 1
+            fi
+            # The HPA owns the replica count.
+            [ -z "$(yq 'select(.kind == "Deployment") | .spec.replicas' "$slot.yaml" | grep -v '^null$' || true)" ] \
+              || { echo "$slot: a Deployment sets replicas"; exit 1; }
+          done
 
   docker-images:
     name: Docker images build
@@ -154,3 +187,123 @@ jobs:
       - name: Tear down
         if: always()
         run: docker compose down -v
+
+  kubernetes-e2e:
+    name: Kubernetes blue/green + HPA (kind)
+    runs-on: ubuntu-latest
+    needs: [backend, frontend, kubernetes]
+    timeout-minutes: 25
+    env:
+      CLUSTER: taskflow
+      CURL_IMAGE: curlimages/curl:8.10.1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: helm/kind-action@v1
+        with:
+          version: v0.24.0
+          node_image: kindest/node:v1.31.0
+          cluster_name: ${{ env.CLUSTER }}
+
+      - name: Install metrics-server (needed by the HPAs)
+        run: |
+          set -euo pipefail
+          kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.7.2/components.yaml
+          # kind's kubelets use self-signed certificates.
+          kubectl -n kube-system patch deployment metrics-server --type json \
+            -p '[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]'
+          kubectl -n kube-system rollout status deployment/metrics-server --timeout=180s
+          kubectl wait --for=condition=Available apiservice/v1beta1.metrics.k8s.io --timeout=180s
+          for i in $(seq 1 30); do kubectl top nodes && exit 0; sleep 5; done
+          echo "metrics API never returned data"; exit 1
+
+      - name: Build images and load them into kind
+        run: |
+          set -euo pipefail
+          docker build -t taskflow-backend:1.0.0 ./backend
+          docker build -t taskflow-frontend:1.0.0 ./frontend
+          # Same build under a second tag: a "new release" without rebuilding.
+          docker tag taskflow-backend:1.0.0 taskflow-backend:1.0.1
+          docker tag taskflow-frontend:1.0.0 taskflow-frontend:1.0.1
+          docker pull "$CURL_IMAGE"
+          kind load docker-image --name "$CLUSTER" \
+            taskflow-backend:1.0.0 taskflow-backend:1.0.1 \
+            taskflow-frontend:1.0.0 taskflow-frontend:1.0.1 "$CURL_IMAGE"
+
+      - name: Bootstrap (blue is live on 1.0.0)
+        run: bash scripts/bluegreen.sh bootstrap 1.0.0
+
+      - name: Deploy 1.0.1 to the idle colour (green); traffic must stay on blue
+        run: |
+          set -euo pipefail
+          bash scripts/bluegreen.sh deploy 1.0.1
+          live="$(kubectl -n taskflow get svc frontend -o jsonpath='{.spec.selector.slot}')"
+          [ "$live" = blue ] || { echo "deploy moved traffic to $live"; exit 1; }
+          img() { kubectl -n taskflow get deploy "$1" -o jsonpath='{.spec.template.spec.containers[0].image}'; }
+          [ "$(img backend-blue)" = taskflow-backend:1.0.0 ]
+          [ "$(img backend-green)" = taskflow-backend:1.0.1 ]
+          [ "$(img frontend-green)" = taskflow-frontend:1.0.1 ]
+
+      - name: Switch to green, check the live Service, then roll back
+        run: |
+          set -euo pipefail
+          live() { kubectl -n taskflow get svc frontend -o jsonpath='{.spec.selector.slot}'; }
+          # Hits the live Service (through nginx to that colour's backend) on its own local port.
+          check_live() {
+            kubectl -n taskflow port-forward svc/frontend "$1:80" >/dev/null &
+            pf=$!
+            trap 'kill $pf' RETURN
+            for i in $(seq 1 15); do curl -fsS "http://localhost:$1/health/ready" && return 0; sleep 2; done
+            return 1
+          }
+
+          bash scripts/bluegreen.sh switch
+          [ "$(live)" = green ]
+          check_live 8080
+
+          bash scripts/bluegreen.sh rollback
+          [ "$(live)" = blue ]
+          check_live 8081
+
+      - name: HPAs are active (metrics are flowing)
+        run: |
+          set -euo pipefail
+          for hpa in backend-blue backend-green frontend-blue frontend-green; do
+            kubectl -n taskflow wait --for=condition=ScalingActive "hpa/$hpa" --timeout=180s
+          done
+          kubectl -n taskflow get hpa
+
+      - name: HPA scales the backend up under load
+        run: |
+          set -euo pipefail
+          # Make the target easy to exceed (1 % of the 100m CPU request) and add a little traffic,
+          # so the test checks the mechanism instead of waiting for real saturation.
+          kubectl -n taskflow patch hpa backend-blue --type merge \
+            -p '{"spec":{"metrics":[{"type":"Resource","resource":{"name":"cpu","target":{"type":"Utilization","averageUtilization":1}}}]}}'
+          kubectl -n taskflow run load --image="$CURL_IMAGE" --restart=Never --command -- \
+            sh -c 'while true; do curl -s -o /dev/null http://backend-blue.taskflow.svc.cluster.local:8080/health/ready; done'
+          min="$(kubectl -n taskflow get hpa backend-blue -o jsonpath='{.spec.minReplicas}')"
+          for i in $(seq 1 60); do
+            desired="$(kubectl -n taskflow get hpa backend-blue -o jsonpath='{.status.desiredReplicas}')"
+            echo "desired replicas: ${desired:-?} (min $min)"
+            [ "${desired:-0}" -gt "$min" ] && exit 0
+            sleep 5
+          done
+          echo "HPA did not scale above its minimum"; exit 1
+
+      - name: Dump cluster state on failure
+        if: failure()
+        run: |
+          kubectl -n taskflow get all,hpa,pdb,events || true
+          kubectl -n taskflow describe pods || true
+          kubectl -n taskflow logs -l app.kubernetes.io/part-of=taskflow --all-containers --tail=100 --prefix || true
+          kubectl -n kube-system logs deployment/metrics-server --tail=50 || true
+          kind export logs --name "$CLUSTER" ./kind-logs || true
+
+      - name: Upload kind logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kind-logs
+          path: kind-logs
+          if-no-files-found: ignore
