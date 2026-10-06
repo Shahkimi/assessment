@@ -1,5 +1,7 @@
 # Bonus: single entry point. Needs an ingress controller (e.g. ingress-nginx).
-#   /api, /swagger, /health -> backend      / -> frontend
+#   everything -> the live `frontend` Service (blue or green, see k8s/services.yaml).
+# The frontend's nginx proxies /api, /swagger and /health to the same colour's backend, so one selector
+# change in scripts/bluegreen.sh switches the whole release at once.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -12,20 +14,6 @@ spec:
   rules:
     - http:
         paths:
-          - path: /api
-            pathType: Prefix
-            backend:
-              service:
-                name: backend
-                port:
-                  number: 8080
-          - path: /swagger
-            pathType: Prefix
-            backend:
-              service:
-                name: backend
-                port:
-                  number: 8080
           - path: /
             pathType: Prefix
             backend:

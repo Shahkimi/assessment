@@ -1,4 +1,7 @@
-# kubectl apply -k k8s/
+# Infrastructure only: namespace, config, secrets, Postgres, ingress and the live Service.
+# Not enough to run the app, and not safe to re-apply later (that would reset the live colour to blue).
+# Use scripts/bluegreen.sh bootstrap | deploy | switch | rollback instead; it applies this directory
+# once and then deploys each colour from slots/blue and slots/green.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: taskflow
@@ -7,6 +10,5 @@ resources:
   - configmap.yaml
   - secret.yaml
   - postgres.yaml
-  - backend.yaml
-  - frontend.yaml
+  - services.yaml
   - ingress.yaml

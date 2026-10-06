@@ -1,0 +1,59 @@
+# Applies EF Core migrations once, before a new colour is rolled out (scripts/bluegreen.sh does this).
+# Only the database settings are needed: `--migrate-only` exits before the web host starts, so the JWT and
+# demo-user settings are never read. The image tag is set by the script.
+#
+# Migrations must be backward compatible (add first, remove later): the old colour keeps serving
+# while this runs and until traffic is switched.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: backend-migrate
+  labels:
+    app.kubernetes.io/name: backend-migrate
+    app.kubernetes.io/part-of: taskflow
+spec:
+  backoffLimit: 1
+  activeDeadlineSeconds: 300
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: backend-migrate
+        app.kubernetes.io/part-of: taskflow
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: taskflow-backend:1.0.0
+          imagePullPolicy: IfNotPresent
+          args: ["--migrate-only"]
+          env:
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: taskflow-config
+                  key: POSTGRES_DB
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: taskflow-config
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: taskflow-secrets
+                  key: POSTGRES_PASSWORD
+            - name: ConnectionStrings__Default
+              value: Host=postgres;Port=5432;Database=$(POSTGRES_DB);Username=$(POSTGRES_USER);Password=$(POSTGRES_PASSWORD)
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 384Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1654
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]

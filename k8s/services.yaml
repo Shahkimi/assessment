@@ -1,0 +1,21 @@
+# The live Service. The Ingress sends all traffic here and nginx proxies /api, /swagger and /health to the
+# same colour's backend, so flipping `slot` moves the whole release in one atomic step.
+#
+# `slot` below is only the initial value for bootstrap. scripts/bluegreen.sh switch / rollback patch it on the
+# cluster. Do not `kubectl apply -k k8s/` again afterwards: that would reset it to blue.
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  labels:
+    app.kubernetes.io/name: frontend
+    app.kubernetes.io/part-of: taskflow
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: frontend
+    slot: blue
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80

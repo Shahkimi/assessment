@@ -1,16 +1,15 @@
+# Base template for one blue/green colour of the API. k8s/slots/<colour> adds the name suffix and the
+# `slot` label; do not apply this directory directly.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: backend
-  namespace: taskflow
   labels:
     app.kubernetes.io/name: backend
     app.kubernetes.io/part-of: taskflow
 spec:
-  # Single replica on purpose: the API applies EF Core migrations at start-up and EF 8 has no
-  # migration lock, so two pods racing could collide. For more replicas, run migrations in a
-  # Job / init container and set Database__ApplyMigrationsOnStartup to "false".
-  replicas: 1
+  # No `replicas`: the HorizontalPodAutoscaler (hpa.yaml) owns the replica count. Migrations run in
+  # the pre-deploy Job (k8s/jobs/migrate.yaml), so any number of pods and both colours are safe.
   selector:
     matchLabels:
       app.kubernetes.io/name: backend
@@ -20,6 +19,8 @@ spec:
         app.kubernetes.io/name: backend
         app.kubernetes.io/part-of: taskflow
     spec:
+      # Time for in-flight requests to finish after the preStop sleep when HPA scales down.
+      terminationGracePeriodSeconds: 30
       containers:
         - name: backend
           image: taskflow-backend:1.0.0
@@ -77,9 +78,14 @@ spec:
                 secretKeyRef:
                   name: taskflow-secrets
                   key: DEMO_USER_PASSWORD
+            # Off: the migration Job applies the schema before a new colour is rolled out.
             - name: Database__ApplyMigrationsOnStartup
-              value: "true"
-          # Gives the app time to wait for Postgres + run migrations before liveness can kill it.
+              value: "false"
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "5"]
+          # Gives the app time to start before liveness can kill it.
           startupProbe:
             httpGet:
               path: /health/live
@@ -102,6 +108,7 @@ spec:
             periodSeconds: 5
             timeoutSeconds: 3
             failureThreshold: 3
+          # The CPU request is the HPA's 100 % reference (utilization target in hpa.yaml).
           resources:
             requests:
               cpu: 100m
@@ -114,20 +121,3 @@ spec:
             allowPrivilegeEscalation: false
             capabilities:
               drop: ["ALL"]
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: backend
-  namespace: taskflow
-  labels:
-    app.kubernetes.io/name: backend
-    app.kubernetes.io/part-of: taskflow
-spec:
-  type: ClusterIP
-  selector:
-    app.kubernetes.io/name: backend
-  ports:
-    - name: http
-      port: 8080
-      targetPort: http

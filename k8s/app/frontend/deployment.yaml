@@ -1,0 +1,58 @@
+# Base template for one blue/green colour of the web tier. k8s/slots/<colour> adds the name suffix, the
+# `slot` label and the matching BACKEND_URL; do not apply this directory directly.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  labels:
+    app.kubernetes.io/name: frontend
+    app.kubernetes.io/part-of: taskflow
+spec:
+  # No `replicas`: the HorizontalPodAutoscaler (hpa.yaml) owns the replica count.
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: frontend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: frontend
+        app.kubernetes.io/part-of: taskflow
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: frontend
+          image: taskflow-frontend:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 80
+          env:
+            # nginx template substitutes this into the /api proxy rule at start-up. Each colour's overlay
+            # overrides it with its own backend Service so a colour is a coherent release (blue web ->
+            # blue API). Must be the fully qualified name: nginx's resolver ignores the pod's DNS search
+            # domains, so a short name fails with "could not be resolved" (502). Assumes the default
+            # cluster domain cluster.local.
+            - name: BACKEND_URL
+              value: http://backend.taskflow.svc.cluster.local:8080
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "5"]
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          # The CPU request is the HPA's 100 % reference (utilization target in hpa.yaml).
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              memory: 128Mi

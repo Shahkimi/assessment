@@ -1,0 +1,29 @@
+# One blue/green colour: the shared app templates, suffixed -green and labelled slot=green.
+# Deployed by scripts/bluegreen.sh; blue is identical apart from the colour.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: taskflow
+nameSuffix: -green
+labels:
+  - pairs:
+      slot: green
+    includeSelectors: true
+    includeTemplates: true
+resources:
+  - ../../app/backend
+  - ../../app/frontend
+patches:
+  # This colour's web tier proxies to this colour's API.
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: frontend
+      spec:
+        template:
+          spec:
+            containers:
+              - name: frontend
+                env:
+                  - name: BACKEND_URL
+                    value: http://backend-green.taskflow.svc.cluster.local:8080
