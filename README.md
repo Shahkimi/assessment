@@ -1,7 +1,6 @@
 # TaskFlow — Mini Task Manager
 
-A small full-stack task manager built for the Sophic Automation *SA-IFKM Technical Assessment*
-(Software Engineer I, Infineon ADAT).
+A small full-stack task manager.
 
 | Layer      | Technology                                                    |
 | ---------- | ------------------------------------------------------------- |
