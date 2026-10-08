@@ -11,6 +11,8 @@ export interface TaskItem {
   status: TaskStatus;
   createdAtUtc: string;
   updatedAtUtc: string;
+  // add new property for officer name
+  officerName: string | null;
 }
 
 export interface TaskPayload {
@@ -18,4 +20,6 @@ export interface TaskPayload {
   description: string | null;
   priority: TaskPriority;
   dueDate: string | null;
+  // add new property for officer name
+  officerName: string | null;
 }

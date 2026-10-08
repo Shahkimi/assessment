@@ -16,4 +16,5 @@ public class TaskItem
     public TaskItemStatus Status { get; set; } = TaskItemStatus.Todo;
     public DateTime CreatedAtUtc { get; set; }
     public DateTime UpdatedAtUtc { get; set; }
+    public string? OfficerName { get; set; } // add new field for officer name
 }

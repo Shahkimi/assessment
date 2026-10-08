@@ -9,6 +9,8 @@ public class UpdateTaskRequestValidator : AbstractValidator<UpdateTaskRequest>
     {
         RuleFor(x => x.Title).TitleRules();
         RuleFor(x => x.Description).DescriptionRules();
-        RuleFor(x => x.Priority).PriorityRules();
+        RuleFor(x => x.Priority).PriorityRules();   
+        // add new rule for officer name
+        RuleFor(x => x.OfficerName).OfficerNameRules();
     }
 }

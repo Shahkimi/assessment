@@ -19,4 +19,8 @@ internal static class TaskRequestRules
     public static IRuleBuilderOptions<T, TaskPriority?> PriorityRules<T>(this IRuleBuilder<T, TaskPriority?> rule) =>
         rule.NotNull().WithMessage("Priority is required.")
             .IsInEnum().WithMessage("Priority must be Low, Medium or High.");
+
+    public static IRuleBuilderOptions<T, string?> OfficerNameRules<T>(this IRuleBuilder<T, string?> rule) =>
+        rule.MaximumLength(100)
+            .WithMessage("OfficerName must be at most 100 characters.");
 }

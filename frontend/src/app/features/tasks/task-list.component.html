@@ -63,6 +63,9 @@
             <tr [class.done]="task.status === 'Done'" [class.busy]="isBusy(task.id)">
               <td>
                 <div class="title">{{ task.title }}</div>
+                @if (task.officerName) {
+                  <div class="officerName">Assigned to: {{ task.officerName }}</div>
+                }
                 @if (task.description) {
                   <div class="description muted">{{ task.description }}</div>
                 }

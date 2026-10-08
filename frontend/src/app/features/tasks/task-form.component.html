@@ -41,6 +41,15 @@
       <label for="dueDate">Due date</label>
       <input id="dueDate" type="date" formControlName="dueDate" />
     </div>
+
+    <!-- add new field for officer name -->
+    <div class="field">
+      <label for="officerName">Officer Name</label>
+      <input id="officerName" type="text" formControlName="officerName" maxlength="100" />
+      @if (officerName.touched && officerName.errors) {
+        <small class="field-error">OfficerName must be at most 100 characters.</small>
+      }
+    </div>
   </div>
 
   <div class="actions">

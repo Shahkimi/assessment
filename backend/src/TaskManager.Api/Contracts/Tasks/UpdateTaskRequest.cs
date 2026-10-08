@@ -6,4 +6,6 @@ public record UpdateTaskRequest(
     string? Title,
     string? Description,
     TaskPriority? Priority,
-    DateOnly? DueDate);
+    DateOnly? DueDate,
+    // add new property for officer name
+    string? OfficerName = null);

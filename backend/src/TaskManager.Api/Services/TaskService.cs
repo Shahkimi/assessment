@@ -32,7 +32,9 @@ public class TaskService(
             DueDate = request.DueDate,
             Status = TaskItemStatus.Todo,
             CreatedAtUtc = now,
-            UpdatedAtUtc = now
+            UpdatedAtUtc = now, 
+            // add new property for officer name
+            OfficerName = request.OfficerName
         };
 
         await repository.AddAsync(task, ct);
@@ -49,7 +51,9 @@ public class TaskService(
         task.Priority = request.Priority!.Value;
         task.DueDate = request.DueDate;
         task.UpdatedAtUtc = clock.GetUtcNow().UtcDateTime;
-
+        
+        // add new property for officer name
+        task.OfficerName = request.OfficerName;
         await repository.UpdateAsync(task, ct);
         return TaskResponse.From(task);
     }

@@ -34,7 +34,9 @@ export class TaskFormComponent implements OnInit {
     title: ['', [Validators.required, Validators.maxLength(200), notBlank]],
     description: ['', [Validators.maxLength(2000)]],
     priority: ['Medium' as TaskPriority, [Validators.required]],
-    dueDate: ['']
+    dueDate: [''],
+    // add new property for officer name
+    officerName: ['', [Validators.maxLength(100)]]
   });
 
   ngOnInit(): void {
@@ -44,13 +46,20 @@ export class TaskFormComponent implements OnInit {
         title: task.title,
         description: task.description ?? '',
         priority: task.priority,
-        dueDate: task.dueDate ?? ''
+        dueDate: task.dueDate ?? '',
+        // add new property for officer name
+        officerName: task.officerName ?? ''
       });
     }
   }
 
   get title() {
     return this.form.controls.title;
+  }
+  
+  /** Get the officer name control. */
+  get officerName() {
+    return this.form.controls.officerName;
   }
 
   get description() {
@@ -70,7 +79,9 @@ export class TaskFormComponent implements OnInit {
       title: value.title.trim(),
       description: value.description.trim() || null,
       priority: value.priority,
-      dueDate: value.dueDate || null
+      dueDate: value.dueDate || null,
+      // add new property for officer name
+      officerName: value.officerName.trim() || null
     });
   }
 }

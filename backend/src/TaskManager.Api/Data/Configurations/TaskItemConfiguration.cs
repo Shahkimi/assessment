@@ -40,5 +40,8 @@ public class TaskItemConfiguration : IEntityTypeConfiguration<TaskItem>
         builder.Property(t => t.UpdatedAtUtc).IsRequired();
 
         builder.HasIndex(t => t.Status);
+        // add new property for officer name
+        builder.Property(t => t.OfficerName)
+            .HasMaxLength(100);
     }
 }
